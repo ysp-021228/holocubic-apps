@@ -1,0 +1,6 @@
+name = YSP PC Monitor
+kind = app
+entry = main.lua
+icon = main.png
+description = Multi-page PC monitor for YSP desktop bridge
+version = 0.1.0

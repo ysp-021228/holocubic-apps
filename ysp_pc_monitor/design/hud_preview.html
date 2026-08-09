@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YSP PC Monitor HUD Preview</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #151b23;
+  --text: #d9e2ee;
+  --muted: #8a96a6;
+  --hud: #f3f7fb;
+  --hud-soft: #bac5d2;
+  --hud-dim: #6f7d8d;
+  --line: rgba(218, 232, 246, .42);
+  --line-dim: rgba(218, 232, 246, .18);
+  --accent: #9bb7c8;
+  --warn: #d7b56d;
+  --green: #9ccbb4;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0;
+}
+
+.workbench {
+  width: min(100vw - 28px, 860px);
+  display: grid;
+  grid-template-columns: 320px minmax(260px, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.screen {
+  position: relative;
+  width: 320px;
+  height: 240px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid #2b333d;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  width: 320px;
+  height: 240px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(8px);
+  transition: opacity 170ms ease, transform 170ms ease;
+}
+
+.page.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.hud {
+  position: absolute;
+  color: var(--hud);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.label {
+  color: var(--hud-dim);
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+
+.micro {
+  color: var(--hud-dim);
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+
+.value-xl {
+  color: var(--hud);
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.value-lg {
+  color: var(--hud);
+  font-size: 37px;
+  font-weight: 600;
+}
+
+.value-md {
+  color: var(--hud);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.unit {
+  color: var(--hud-soft);
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.ok { color: var(--green); }
+.dim { color: var(--hud-dim); }
+.soft { color: var(--hud-soft); }
+
+.line {
+  position: absolute;
+  height: 1px;
+  background: var(--line);
+}
+
+.line-dim { background: var(--line-dim); }
+
+.corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: var(--line);
+  border-style: solid;
+}
+
+.corner.tl { border-width: 1px 0 0 1px; }
+.corner.tr { border-width: 1px 1px 0 0; }
+.corner.bl { border-width: 0 0 1px 1px; }
+.corner.br { border-width: 0 1px 1px 0; }
+
+.header-title {
+  left: 10px;
+  top: 10px;
+  font-size: 12px;
+  letter-spacing: .16em;
+  font-weight: 600;
+}
+
+.header-right {
+  right: 10px;
+  top: 10px;
+  font-size: 10px;
+  color: var(--hud-soft);
+}
+
+.header-line {
+  left: 10px;
+  top: 30px;
+  width: 300px;
+}
+
+.system-left { left: 21px; top: 51px; width: 122px; height: 74px; }
+.system-right { left: 177px; top: 51px; width: 122px; height: 74px; text-align: right; }
+.system-left .corner.tl, .system-right .corner.tl { left: 0; top: 0; }
+.system-left .corner.br, .system-right .corner.br { right: 0; bottom: 0; }
+.system-name { top: 6px; font-size: 8px; letter-spacing: .12em; }
+.system-left .system-name { left: 6px; }
+.system-right .system-name { right: 6px; }
+.system-load { top: 19px; }
+.system-left .system-load { left: 55px; }
+.system-right .system-load { right: 55px; }
+.system-temp { top: 55px; font-size: 12px; color: var(--hud); }
+.system-clock { top: 55px; right: 0; font-size: 12px; color: var(--hud-soft); }
+.system-right .system-temp { left: 0; }
+.memory-title { left: 16px; top: 141px; }
+.memory-value { left: 16px; top: 157px; font-size: 17px; }
+.memory-bar { left: 70px; top: 163px; width: 232px; height: 1px; background: var(--line-dim); }
+.memory-fill { left: 70px; top: 163px; width: 123px; height: 1px; background: var(--hud-soft); }
+.memory-tick { top: 159px; width: 1px; height: 9px; background: var(--hud-soft); }
+.net-title { left: 16px; top: 184px; }
+.net-up { left: 94px; top: 202px; font-size: 9px; color: var(--hud-soft); }
+.net-down { left: 178px; top: 202px; font-size: 9px; color: var(--hud-soft); text-align: left; }
+
+.thermal-label { color: var(--hud-soft); font-size: 10px; letter-spacing: .12em; }
+.thermal-main { color: var(--hud); font-size: 31px; font-weight: 600; }
+.thermal-secondary { color: var(--hud-soft); font-size: 11px; letter-spacing: .06em; }
+.thermal-small { color: var(--hud); font-size: 31px; font-weight: 600; }
+.thermal-left { left: 24px; top: 55px; width: 118px; }
+.thermal-right { left: 178px; top: 55px; width: 118px; text-align: right; }
+.thermal-lower-left { left: 24px; top: 137px; width: 118px; }
+.thermal-lower-right { left: 178px; top: 137px; width: 118px; text-align: right; }
+.thermal-memory-d1 { left: 176px; top: 155px; width: 62px; color: var(--hud-soft); font-size: 10px; letter-spacing: .04em; }
+.thermal-memory-d3 { left: 240px; top: 155px; width: 62px; color: var(--hud-soft); font-size: 10px; letter-spacing: .04em; }
+.thermal-mark {
+  position: absolute;
+  height: 1px;
+  background: var(--line);
+  transform-origin: left center;
+}
+.thermal-fans-title { left: 24px; top: 191px; font-size: 9px; color: var(--hud-soft); letter-spacing: .14em; }
+.fan-item { top: 203px; width: 56px; color: var(--hud); font-size: 12px; font-weight: 500; }
+
+.compute-label { left: 0; top: 54px; width: 320px; text-align: center; }
+.compute-value { left: 0; top: 70px; width: 320px; text-align: center; }
+.compute-unit { left: 197px; top: 103px; }
+.power-split { left: 44px; top: 137px; width: 232px; }
+.power-cpu { left: 44px; top: 151px; width: 92px; }
+.power-gpu { left: 184px; top: 151px; width: 92px; text-align: right; }
+.spark { position: absolute; left: 38px; top: 194px; width: 244px; height: 21px; }
+
+.network-label { left: 0; top: 55px; width: 320px; text-align: center; font-size: 12px; letter-spacing: .2em; }
+.network-up { left: 52px; top: 86px; width: 82px; text-align: center; }
+.network-down { right: 52px; top: 86px; width: 82px; text-align: center; }
+.network-num { font-size: 30px; color: var(--hud); font-weight: 600; }
+.link-line { left: 45px; top: 159px; width: 230px; }
+.link-dot { position: absolute; left: 156px; top: 154px; width: 9px; height: 9px; border: 1px solid var(--line); border-radius: 50%; }
+.bridge { left: 21px; top: 185px; font-size: 10px; color: var(--hud-soft); }
+
+.ambient-time { left: 0; top: 54px; width: 320px; text-align: center; font-size: 54px; font-weight: 500; letter-spacing: .02em; }
+.ambient-date { left: 0; top: 125px; width: 320px; text-align: center; font-size: 12px; color: var(--hud-soft); letter-spacing: .18em; }
+.ambient-state { left: 0; top: 158px; width: 320px; text-align: center; font-size: 11px; color: var(--hud-dim); letter-spacing: .18em; }
+.ambient-mark { position: absolute; width: 24px; height: 24px; border-color: var(--line-dim); border-style: solid; }
+.ambient-mark.tl { left: 17px; top: 20px; border-width: 1px 0 0 1px; }
+.ambient-mark.tr { right: 17px; top: 20px; border-width: 1px 1px 0 0; }
+.ambient-mark.bl { left: 17px; bottom: 20px; border-width: 0 0 1px 1px; }
+.ambient-mark.br { right: 17px; bottom: 20px; border-width: 0 1px 1px 0; }
+
+.tools {
+  background: var(--panel);
+  border: 1px solid #29313b;
+  padding: 16px;
+}
+
+.tools h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: .02em;
+}
+
+.tools p {
+  margin: 8px 0;
+  color: var(--muted);
+  font: 13px/1.45 system-ui, sans-serif;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+button {
+  border: 1px solid #394554;
+  background: #0f141b;
+  color: var(--text);
+  padding: 8px 10px;
+  font: 12px ui-monospace, monospace;
+  cursor: pointer;
+}
+
+button.active {
+  border-color: #8293a5;
+  color: #fff;
+}
+
+.note {
+  border-top: 1px solid #29313b;
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .workbench { grid-template-columns: 1fr; width: min(100vw - 20px, 360px); }
+  .screen { margin: 0 auto; }
+}
+</style>
+</head>
+<body>
+<main class="workbench">
+  <section class="screen" aria-label="320 by 240 HUD preview">
+    <section class="page active" data-page="system">
+      <div class="hud header-title">SYSTEM</div>
+      <div class="hud header-right">15:07</div>
+      <div class="line header-line"></div>
+
+      <div class="hud system-left">
+        <div class="corner tl"></div><div class="corner br"></div>
+        <div class="hud label system-name">CPU</div>
+        <div class="hud value-lg system-load" data-text="cpuLoad">17%</div>
+        <div class="hud system-temp"><span data-text="cpuTemp">56</span>&deg;C</div>
+        <div class="hud system-clock"><span data-text="cpuClock">4.92</span> GHz</div>
+      </div>
+
+      <div class="hud system-right">
+        <div class="corner tl"></div><div class="corner br"></div>
+        <div class="hud label system-name">GPU</div>
+        <div class="hud value-lg system-load" data-text="gpuLoad">32%</div>
+        <div class="hud system-temp"><span data-text="gpuTemp">44</span>&deg;C</div>
+        <div class="hud system-clock"><span data-text="gpuClock">0.76</span> GHz</div>
+      </div>
+
+      <div class="hud label memory-title">MEMORY</div>
+      <div class="hud memory-value" data-text="ramLoad">53%</div>
+      <div class="hud memory-bar"></div>
+      <div class="hud memory-fill"></div>
+      <div class="hud memory-tick" style="left:193px"></div>
+
+      <div class="hud label net-title">NET</div>
+      <div class="hud net-up">&uarr; <span data-text="upload">10.2</span> KB/s</div>
+      <div class="hud net-down">&darr; <span data-text="download">21.4</span> KB/s</div>
+    </section>
+
+    <section class="page" data-page="thermal">
+      <div class="hud header-title">THERMAL</div>
+      <div class="hud header-right" data-text="thermalStatus">NOMINAL</div>
+      <div class="line header-line"></div>
+
+      <div class="hud thermal-left">
+        <div class="thermal-label">CPU</div>
+        <div class="thermal-main"><span data-text="cpuTemp">56</span>℃</div>
+        <div class="thermal-secondary">CCD&nbsp;&nbsp;<span data-text="cpuCcdTemp">45</span>℃</div>
+      </div>
+      <div class="thermal-mark" data-line="cpuTemp" style="left:24px;top:121px;width:68px"></div>
+
+      <div class="hud thermal-right">
+        <div class="thermal-label">GPU</div>
+        <div class="thermal-main"><span data-text="gpuTemp">44</span>℃</div>
+        <div class="thermal-secondary">VRAM&nbsp;&nbsp;<span data-text="gpuMemoryTemp">50</span>℃</div>
+      </div>
+      <div class="thermal-mark" data-line="gpuTemp" style="left:218px;top:121px;width:68px;transform-origin:right center"></div>
+
+      <div class="hud thermal-lower-left">
+        <div class="thermal-label">SSD</div>
+        <div class="thermal-small"><span data-text="ssdTemp">47</span>℃</div>
+      </div>
+      <div class="thermal-mark" data-line="ssdTemp" style="left:24px;top:181px;width:54px"></div>
+
+      <div class="hud thermal-lower-right">
+        <div class="thermal-label">MEMORY</div>
+      </div>
+      <div class="hud thermal-memory-d1">D1&nbsp;<span data-text="memDimm1Temp">37</span>℃</div>
+      <div class="hud thermal-memory-d3">D3&nbsp;<span data-text="memDimm3Temp">36</span>℃</div>
+      <div class="thermal-mark" data-line="memDimm1Temp" style="left:176px;top:181px;width:44px"></div>
+      <div class="thermal-mark" data-line="memDimm3Temp" style="left:240px;top:181px;width:44px"></div>
+
+      <div class="hud thermal-fans-title">FANS // RPM</div>
+      <div class="hud fan-item" style="left:24px" data-text="fan1Rpm">1156</div>
+      <div class="hud fan-item" style="left:94px" data-text="fan2Rpm">688</div>
+      <div class="hud fan-item" style="left:164px" data-text="fan3Rpm">858</div>
+      <div class="hud fan-item" style="left:234px" data-text="fan4Rpm">888</div>
+    </section>
+
+    <section class="page" data-page="power">
+      <div class="hud header-title">POWER</div>
+      <div class="hud header-right">COMPUTE</div>
+      <div class="line header-line"></div>
+      <div class="hud label compute-label">CPU + GPU</div>
+      <div class="hud value-xl compute-value"><span data-text="computePower">73.8</span></div>
+      <div class="hud unit compute-unit">W</div>
+      <div class="line power-split"></div>
+      <div class="hud power-cpu">
+        <div class="label">CPU POWER</div>
+        <div class="value-md"><span data-text="cpuPower">40.5</span> <span class="unit">W</span></div>
+        <div class="micro"><span data-text="cpuClock">4.92</span> GHz</div>
+      </div>
+      <div class="hud power-gpu">
+        <div class="label">GPU POWER</div>
+        <div class="value-md"><span data-text="gpuPower">33.3</span> <span class="unit">W</span></div>
+        <div class="micro"><span data-text="gpuClock">0.76</span> GHz</div>
+      </div>
+      <svg class="spark" viewBox="0 0 244 21" aria-hidden="true">
+        <polyline points="0,16 18,14 36,15 54,9 72,12 90,7 108,10 126,8 144,13 162,6 180,9 198,11 216,5 244,8"
+          fill="none" stroke="rgba(218,232,246,.58)" stroke-width="1"/>
+        <line x1="0" y1="20" x2="244" y2="20" stroke="rgba(218,232,246,.18)" stroke-width="1"/>
+      </svg>
+    </section>
+
+    <section class="page" data-page="network">
+      <div class="hud header-title">NETWORK</div>
+      <div class="hud header-right">ONLINE <span class="ok">&#9679;</span></div>
+      <div class="line header-line"></div>
+      <div class="hud network-label">LINK</div>
+      <div class="hud network-up">
+        <div class="label">&uarr; UPLOAD</div>
+        <div class="network-num" data-text="upload">10.2</div>
+        <div class="unit">KB/s</div>
+      </div>
+      <div class="hud network-down">
+        <div class="label">&darr; DOWNLOAD</div>
+        <div class="network-num" data-text="download">21.4</div>
+        <div class="unit">KB/s</div>
+      </div>
+      <div class="line link-line"></div>
+      <div class="link-dot"></div>
+      <div class="hud micro" style="left:45px;top:149px">PC</div>
+      <div class="hud micro" style="right:45px;top:149px">CUBIC</div>
+      <div class="hud micro soft" style="left:144px;top:169px">LIVE</div>
+      <div class="hud bridge">BRIDGE&nbsp;&nbsp;192.168.0.80 : 8765</div>
+      <div class="hud micro" style="left:21px;top:204px">LATENCY RESERVED</div>
+    </section>
+
+    <section class="page" data-page="ambient">
+      <div class="ambient-mark tl"></div>
+      <div class="ambient-mark tr"></div>
+      <div class="ambient-mark bl"></div>
+      <div class="ambient-mark br"></div>
+      <div class="hud ambient-time">15&nbsp;07</div>
+      <div class="hud ambient-date">AUG.09 SUN</div>
+      <div class="hud ambient-state">PC SLEEP</div>
+    </section>
+  </section>
+
+  <aside class="tools">
+    <h1>HUD Preview</h1>
+    <p>320 x 240 black simulates transparent pixels that do not emit light. The design avoids cards, filled panels, gradients, and heavy color.</p>
+    <div class="buttons" id="pageButtons">
+      <button class="active" data-target="system">SYSTEM</button>
+      <button data-target="thermal">THERMAL</button>
+      <button data-target="power">POWER</button>
+      <button data-target="network">NETWORK</button>
+      <button data-target="ambient">AMBIENT</button>
+    </div>
+    <div class="buttons" id="dataButtons">
+      <button class="active" data-mode="nominal">NOMINAL DATA</button>
+      <button data-mode="warm">WARM DATA</button>
+    </div>
+    <div class="note">
+      <p><strong>Design:</strong> Minimal Transparent Avionics HUD. Primary readings use large numerals; secondary telemetry uses small labels, thin rules, and reserved spacing.</p>
+      <p><strong>Thermal:</strong> Status Board hierarchy: CPU/GPU first, CCD/VRAM second, SSD/MEMORY third, fan RPM as cooling telemetry rail.</p>
+    </div>
+  </aside>
+</main>
+
+<script>
+const dataSets = {
+  nominal: {
+    cpuLoad: "17%", gpuLoad: "32%", cpuTemp: "56", gpuTemp: "44",
+    cpuClock: "4.92", gpuClock: "0.76", ramLoad: "53%",
+    upload: "10.2", download: "21.4", cpuPower: "40.5",
+    gpuPower: "33.3", computePower: "73.8",
+    cpuCcdTemp: "45", gpuMemoryTemp: "50", ssdTemp: "47",
+    memDimm1Temp: "37", memDimm3Temp: "36",
+    fan1Rpm: "1156", fan2Rpm: "688", fan3Rpm: "858", fan4Rpm: "888",
+    thermalStatus: "NOMINAL"
+  },
+  warm: {
+    cpuLoad: "71%", gpuLoad: "88%", cpuTemp: "78", gpuTemp: "72",
+    cpuClock: "5.21", gpuClock: "2.64", ramLoad: "68%",
+    upload: "842", download: "1.7", cpuPower: "88.4",
+    gpuPower: "176.2", computePower: "264.6",
+    cpuCcdTemp: "68", gpuMemoryTemp: "82", ssdTemp: "59",
+    memDimm1Temp: "48", memDimm3Temp: "47",
+    fan1Rpm: "1420", fan2Rpm: "910", fan3Rpm: "1048", fan4Rpm: "1092",
+    thermalStatus: "WARM"
+  }
+};
+
+function thermalScale(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return .28;
+  return Math.max(.28, Math.min(1, (number - 25) / 65));
+}
+
+function showPage(name) {
+  document.querySelectorAll(".page").forEach(page => {
+    page.classList.toggle("active", page.dataset.page === name);
+  });
+  document.querySelectorAll("#pageButtons button").forEach(button => {
+    button.classList.toggle("active", button.dataset.target === name);
+  });
+}
+
+function setData(mode) {
+  const data = dataSets[mode];
+  document.querySelectorAll("[data-text]").forEach(node => {
+    const key = node.dataset.text;
+    if (data[key] !== undefined) node.textContent = data[key];
+  });
+  document.querySelectorAll("[data-line]").forEach(node => {
+    const key = node.dataset.line;
+    node.style.transform = "scaleX(" + thermalScale(data[key]) + ")";
+  });
+  document.querySelectorAll("#dataButtons button").forEach(button => {
+    button.classList.toggle("active", button.dataset.mode === mode);
+  });
+}
+
+document.getElementById("pageButtons").addEventListener("click", event => {
+  const button = event.target.closest("button[data-target]");
+  if (button) showPage(button.dataset.target);
+});
+
+document.getElementById("dataButtons").addEventListener("click", event => {
+  const button = event.target.closest("button[data-mode]");
+  if (button) setData(button.dataset.mode);
+});
+
+setData("nominal");
+</script>
+</body>
+</html>
