@@ -7,8 +7,14 @@ config.path = "/sse"
 
 config.timeout_ms = 7000
 config.reconnect_ms = 2000
+config.reconnect_max_ms = 30000
 config.watchdog_ms = 1000
 config.client_stale_ms = 5000
+
+-- Device clock sync for the ambient/sleep page.
+config.timezone = "CST-8"
+config.ntp_server = "ntp.aliyun.com"
+config.time_sync_retry_ms = 600000
 
 -- App-level PC presence state. Short network jitter should not steal the page.
 config.offline_after_ms = 10000

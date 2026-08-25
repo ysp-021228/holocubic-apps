@@ -66,6 +66,7 @@ local state = {
   canvas = nil,
   client = nil,
   tick_timer = nil,
+  time_sync_timer = nil,
   runtime = PcState.new(config),
   pager = Pager.new(config),
   hud_title = "",
@@ -90,10 +91,36 @@ local function now_ms()
   return 0
 end
 
+local last_time_sync_ms = -60000
+
+local function request_time_sync(force)
+  if not time then return end
+
+  local now = now_ms()
+  local retry_ms = tonumber(config.time_sync_retry_ms) or 30000
+  if not force and now - last_time_sync_ms < retry_ms then return end
+  last_time_sync_ms = now
+
+  if time.settimezone then
+    pcall(time.settimezone, config.timezone or "CST-8")
+  end
+
+  if time.initntp then
+    local ok, err = pcall(time.initntp, config.ntp_server or "ntp.aliyun.com")
+    if ok then
+      log("ntp", config.ntp_server or "ntp.aliyun.com")
+    else
+      log("ntp failed", err)
+    end
+  end
+end
+
 local function clock_text()
   if time and time.getlocal then
     local ok, value = pcall(time.getlocal)
     if ok and type(value) == "table" then
+      local year = tonumber(value.year or value[1])
+      if year and year < 2024 then return "--:--" end
       local hour = tonumber(value.hour or value[4]) or 0
       local min = tonumber(value.min or value.minute or value[5]) or 0
       return string.format("%02d:%02d", hour, min)
@@ -149,8 +176,13 @@ local function render()
     page_count = #pages,
   }
 
-  page.render(ctx, state.runtime.snapshot)
-  Draw.footer(ctx, footer_text)
+  local render_ok, render_err = pcall(function()
+    page.render(ctx, state.runtime.snapshot)
+    Draw.footer(ctx, footer_text)
+  end)
+  if not render_ok then
+    log("render failed", render_err)
+  end
   Draw.finish(state.canvas, explicit)
 end
 
@@ -198,8 +230,11 @@ local function create_client()
   return PcClient.new(config, {
     on_status = function(status, detail)
       log("status", status, detail or "")
+      local was_online = state.runtime.online
       state.runtime:set_status(status, detail)
-      render()
+      if was_online or state.runtime.online then
+        render()
+      end
     end,
     on_sample = function(snapshot)
       local transition = state.runtime:apply_sample(snapshot, now_ms())
@@ -232,6 +267,17 @@ local function start_tick()
   end)
 end
 
+local function start_time_sync_timer()
+  if not tmr or not tmr.create then return end
+  if state.time_sync_timer then pcall(function() state.time_sync_timer:unregister() end) end
+  local interval = math.max(60000, math.floor(tonumber(config.time_sync_retry_ms) or 600000))
+  state.time_sync_timer = tmr.create()
+  state.time_sync_timer:alarm(interval, tmr.ALARM_AUTO, function()
+    if state.stopped then return end
+    request_time_sync(false)
+  end)
+end
+
 function state.stop(reason)
   if state.stopped then return end
   state.stopped = true
@@ -243,6 +289,10 @@ function state.stop(reason)
   if state.tick_timer then
     pcall(function() state.tick_timer:unregister() end)
     state.tick_timer = nil
+  end
+  if state.time_sync_timer then
+    pcall(function() state.time_sync_timer:unregister() end)
+    state.time_sync_timer = nil
   end
   if key and key.off then
     pcall(function() key.off() end)
@@ -268,9 +318,11 @@ end
 
 _G.__ysp_pc_monitor = state
 
+request_time_sync(true)
 build_ui()
 render()
 start_client()
 start_tick()
+start_time_sync_timer()
 
 return state

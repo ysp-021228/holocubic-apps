@@ -197,7 +197,12 @@ function PcClient.new(config, handlers)
   self.closed = false
   self.last_event_ms = 0
   self.connect_started_ms = 0
+  self.reconnect_delay_ms = tonumber(self.config.reconnect_ms) or 2000
   return self
+end
+
+function PcClient:reset_reconnect_delay()
+  self.reconnect_delay_ms = tonumber(self.config.reconnect_ms) or 2000
 end
 
 function PcClient:path()
@@ -220,6 +225,7 @@ function PcClient:emit_sample(payload)
   local snapshot = parse_payload(payload)
   if snapshot.valid then
     self.last_event_ms = now_ms()
+    self:reset_reconnect_delay()
     if self.handlers.on_sample then
       pcall(self.handlers.on_sample, snapshot, payload)
     end
@@ -258,10 +264,14 @@ function PcClient:schedule_reconnect()
   if self.closed then return end
   if not tmr or not tmr.create then return end
   if self.reconnect_timer then pcall(function() self.reconnect_timer:unregister() end) end
+  local base_delay = math.max(1000, math.floor(tonumber(self.config.reconnect_ms) or 2000))
+  local max_delay = math.max(base_delay, math.floor(tonumber(self.config.reconnect_max_ms) or base_delay))
+  local delay = math.max(base_delay, math.min(max_delay, math.floor(tonumber(self.reconnect_delay_ms) or base_delay)))
   self.reconnect_timer = tmr.create()
-  self.reconnect_timer:alarm(self.config.reconnect_ms or 2000, tmr.ALARM_SINGLE, function()
+  self.reconnect_timer:alarm(delay, tmr.ALARM_SINGLE, function()
     self:connect()
   end)
+  self.reconnect_delay_ms = math.min(max_delay, delay * 2)
 end
 
 function PcClient:connect()
@@ -302,6 +312,7 @@ function PcClient:connect()
 
   if not bind("connection", function()
     self.connect_started_ms = 0
+    self:reset_reconnect_delay()
     self:emit_status("connected", self:url())
     local request = table.concat({
       "GET " .. self:path() .. " HTTP/1.1",
@@ -369,6 +380,7 @@ end
 
 function PcClient:start()
   self.closed = false
+  self:reset_reconnect_delay()
   self:start_watchdog()
   self:connect()
 end

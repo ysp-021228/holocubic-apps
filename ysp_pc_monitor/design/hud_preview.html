@@ -88,7 +88,7 @@ body {
 
 .value-xl {
   color: var(--hud);
-  font-size: 52px;
+  font-size: 60px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -200,7 +200,6 @@ body {
 
 .compute-label { left: 0; top: 54px; width: 320px; text-align: center; }
 .compute-value { left: 0; top: 70px; width: 320px; text-align: center; }
-.compute-unit { left: 197px; top: 103px; }
 .power-split { left: 44px; top: 137px; width: 232px; }
 .power-cpu { left: 44px; top: 151px; width: 92px; }
 .power-gpu { left: 184px; top: 151px; width: 92px; text-align: right; }
@@ -214,9 +213,9 @@ body {
 .link-dot { position: absolute; left: 156px; top: 154px; width: 9px; height: 9px; border: 1px solid var(--line); border-radius: 50%; }
 .bridge { left: 21px; top: 185px; font-size: 10px; color: var(--hud-soft); }
 
-.ambient-time { left: 0; top: 54px; width: 320px; text-align: center; font-size: 54px; font-weight: 500; letter-spacing: .02em; }
-.ambient-date { left: 0; top: 125px; width: 320px; text-align: center; font-size: 12px; color: var(--hud-soft); letter-spacing: .18em; }
-.ambient-state { left: 0; top: 158px; width: 320px; text-align: center; font-size: 11px; color: var(--hud-dim); letter-spacing: .18em; }
+.ambient-time { left: 0; top: 42px; width: 320px; text-align: center; font-size: 76px; font-weight: 500; letter-spacing: .02em; }
+.ambient-date { left: 0; top: 132px; width: 320px; text-align: center; font-size: 12px; color: var(--hud-soft); letter-spacing: .18em; }
+.ambient-state { left: 0; top: 165px; width: 320px; text-align: center; font-size: 11px; color: var(--hud-dim); letter-spacing: .18em; }
 .ambient-mark { position: absolute; width: 24px; height: 24px; border-color: var(--line-dim); border-style: solid; }
 .ambient-mark.tl { left: 17px; top: 20px; border-width: 1px 0 0 1px; }
 .ambient-mark.tr { right: 17px; top: 20px; border-width: 1px 1px 0 0; }
@@ -355,16 +354,15 @@ button.active {
       <div class="line header-line"></div>
       <div class="hud label compute-label">CPU + GPU</div>
       <div class="hud value-xl compute-value"><span data-text="computePower">73.8</span></div>
-      <div class="hud unit compute-unit">W</div>
       <div class="line power-split"></div>
       <div class="hud power-cpu">
         <div class="label">CPU POWER</div>
-        <div class="value-md"><span data-text="cpuPower">40.5</span> <span class="unit">W</span></div>
+        <div class="value-md"><span data-text="cpuPower">40.5</span></div>
         <div class="micro"><span data-text="cpuClock">4.92</span> GHz</div>
       </div>
       <div class="hud power-gpu">
         <div class="label">GPU POWER</div>
-        <div class="value-md"><span data-text="gpuPower">33.3</span> <span class="unit">W</span></div>
+        <div class="value-md"><span data-text="gpuPower">33.3</span></div>
         <div class="micro"><span data-text="gpuClock">0.76</span> GHz</div>
       </div>
       <svg class="spark" viewBox="0 0 244 21" aria-hidden="true">
