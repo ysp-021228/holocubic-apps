@@ -2,7 +2,7 @@ local config = {}
 
 -- Current YSP desktop bridge. Kept intentionally machine-specific.
 config.host = "192.168.50.137"
-config.port = 8765
+config.port = 28765
 config.path = "/sse"
 
 config.timeout_ms = 7000

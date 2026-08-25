@@ -207,7 +207,7 @@ function PcClient:path()
 end
 
 function PcClient:url()
-  return "http://" .. tostring(self.config.host) .. ":" .. tostring(self.config.port or 80) .. self:path()
+  return "http://" .. tostring(self.config.host) .. ":" .. tostring(self.config.port or 28765) .. self:path()
 end
 
 function PcClient:emit_status(status, detail)
@@ -305,7 +305,7 @@ function PcClient:connect()
     self:emit_status("connected", self:url())
     local request = table.concat({
       "GET " .. self:path() .. " HTTP/1.1",
-      "Host: " .. tostring(self.config.host) .. ":" .. tostring(self.config.port or 80),
+      "Host: " .. tostring(self.config.host) .. ":" .. tostring(self.config.port or 28765),
       "Accept: text/event-stream",
       "Cache-Control: no-cache",
       "Connection: keep-alive",
@@ -335,7 +335,7 @@ function PcClient:connect()
   end) then return end
 
   local connect_ok, connect_err = pcall(function()
-    conn:connect(self.config.port or 80, self.config.host)
+    conn:connect(self.config.port or 28765, self.config.host)
   end)
   if not connect_ok then
     self.connect_started_ms = 0
