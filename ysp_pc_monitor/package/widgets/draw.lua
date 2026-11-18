@@ -13,19 +13,20 @@ end
 function Draw.palette()
   return {
     off = 0x000000,
-    text = 0xF3F7FB,
-    soft = 0xBAC5D2,
-    dim = 0x8492A2,
+    text = 0xF5F6F9,
+    soft = 0xB0BAC8,
+    dim = 0xB0BAC8,
     faint = 0x4D5865,
     line = 0x7C8B9B,
-    line_dim = 0x303842,
+    line_dim = 0x3E4754,
     accent = 0x9BB7C8,
-    cpu = 0x43C8FF,
-    gpu = 0x62E493,
-    memory = 0xD7B56D,
-    warn = 0xD7B56D,
-    hot = 0xE87D72,
-    ok = 0x9CCBB4,
+    cpu = 0x76D7FF,
+    gpu = 0x83EFBE,
+    memory = 0xFBD17A,
+    power = 0xFFBC78,
+    warn = 0xFFD18B,
+    hot = 0xFF9B88,
+    ok = 0x83EFBE,
   }
 end
 
@@ -89,9 +90,44 @@ end
 
 function Draw.header(ctx, title, right_text, right_color)
   local c = Draw.palette()
-  Draw.text(ctx.canvas, 10, 10, 190, title, c.text, 12, Draw.ALIGN_LEFT)
-  Draw.text(ctx.canvas, 214, 10, 96, right_text or ctx.clock or "--:--", right_color or c.soft, 10, Draw.ALIGN_RIGHT)
-  Draw.line(ctx.canvas, 10, 30, 310, 30, c.line, 190, 1)
+  if ctx.stale then
+    right_text, right_color = "STALE DATA", c.warn
+  end
+  Draw.text(ctx.canvas, 14, 15, 150, title, c.text, 16, Draw.ALIGN_LEFT)
+  Draw.text(ctx.canvas, 166, 18, 140, right_text or ctx.clock or "--:--", right_color or c.soft, 12, Draw.ALIGN_RIGHT)
+  Draw.rule(ctx, 14, 39, 306, 39)
+end
+
+function Draw.rule(ctx, x1, y1, x2, y2)
+  Draw.line(ctx.canvas, x1, y1, x2, y2, Draw.palette().line_dim, 255, 1)
+end
+
+-- These offsets are the measured bottom edges of the numeral glyphs on the
+-- firmware's built-in fonts. Unsupported large sizes fall back to a small font.
+local metric_baseline = { [12] = 11, [16] = 14, [24] = 21, [28] = 24 }
+
+-- Reserve a fixed unit column so the numbers stay aligned across rows.
+-- The formatter's missing-value marker is drawn without a unit.
+function Draw.metric(ctx, x, y, width, value, unit, size, unit_size, unit_width, color)
+  local c = Draw.palette()
+  local has_value = value ~= "--"
+  local number_width = width - unit_width - 4
+  local number_size = math.min(size, 28)
+  unit_size = unit_size >= 16 and 16 or 12
+  local number_y = y + math.floor((size - number_size) / 2)
+  Draw.text(ctx.canvas, x, number_y, number_width, value,
+    has_value and (color or c.text) or c.dim, number_size, Draw.ALIGN_RIGHT)
+  if has_value then
+    local unit_y = number_y + metric_baseline[number_size] - metric_baseline[unit_size]
+    Draw.text(ctx.canvas, x + number_width + 4, unit_y,
+      unit_width, unit, c.soft, unit_size, Draw.ALIGN_LEFT)
+  end
+end
+
+function Draw.chart_grid(ctx, x, y, width, height)
+  Draw.rule(ctx, x, y, x + width, y)
+  Draw.rule(ctx, x, y + math.floor(height / 2), x + width, y + math.floor(height / 2))
+  Draw.rule(ctx, x, y + height, x + width, y + height)
 end
 
 function Draw.corner(ctx, x, y, size, mode, color, opacity)
@@ -159,13 +195,25 @@ function Draw.page_rail(ctx)
   end
 end
 
-function Draw.sparkline(ctx, x, y, points, color)
+function Draw.sparkline(ctx, x, y, points, color, dash, gap)
   if not points or #points < 2 then return end
   local c = color or Draw.palette().line
   for i = 2, #points do
-    local a = points[i - 1]
-    local b = points[i]
-    Draw.line(ctx.canvas, x + a[1], y + a[2], x + b[1], y + b[2], c, 210, 1)
+    local a, b = points[i - 1], points[i]
+    if dash and b[1] > a[1] then
+      local period = dash + gap
+      local slope = (b[2] - a[2]) / (b[1] - a[1])
+      local start = a[1] - a[1] % period
+      for left = start, b[1] - 1, period do
+        local from, to = math.max(a[1], left), math.min(b[1], left + dash)
+        if from <= to then
+          Draw.line(ctx.canvas, x + from, y + a[2] + slope * (from - a[1]),
+            x + to, y + a[2] + slope * (to - a[1]), c, 255, 1)
+        end
+      end
+    else
+      Draw.line(ctx.canvas, x + a[1], y + a[2], x + b[1], y + b[2], c, 255, 1)
+    end
   end
 end
 

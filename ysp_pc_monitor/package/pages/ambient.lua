@@ -27,13 +27,9 @@ end
 function Page.render(ctx)
   local D = ctx.draw
   local C = D.palette()
-  D.corner(ctx, 17, 20, 24, "tl", C.line_dim, 190)
-  D.corner(ctx, 303, 20, 24, "tr", C.line_dim, 190)
-  D.corner(ctx, 17, 220, 24, "bl", C.line_dim, 190)
-  D.corner(ctx, 303, 220, 24, "br", C.line_dim, 190)
-  D.text(ctx.canvas, 0, 42, 320, tostring(ctx.clock or "--:--"):gsub(":", " "), C.text, 76, D.ALIGN_CENTER)
-  D.text(ctx.canvas, 0, 132, 320, date_text(), C.soft, 12, D.ALIGN_CENTER)
-  D.text(ctx.canvas, 0, 165, 320, "PC // SLEEP", C.dim, 11, D.ALIGN_CENTER)
+  D.text(ctx.canvas, 0, 78, 320, ctx.clock or "--:--", C.text, 28, D.ALIGN_CENTER)
+  D.text(ctx.canvas, 0, 115, 320, date_text(), C.soft, 14, D.ALIGN_CENTER)
+  D.text(ctx.canvas, 0, 144, 320, "PC // NO DATA", C.warn, 14, D.ALIGN_CENTER)
 end
 
 return Page

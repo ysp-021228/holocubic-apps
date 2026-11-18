@@ -195,8 +195,6 @@ function PcClient.new(config, handlers)
   self.reconnect_timer = nil
   self.watchdog_timer = nil
   self.closed = false
-  self.last_event_ms = 0
-  self.connect_started_ms = 0
   self.reconnect_delay_ms = tonumber(self.config.reconnect_ms) or 2000
   return self
 end
@@ -254,36 +252,41 @@ function PcClient:handle_chunk(chunk)
 end
 
 function PcClient:close_connection()
-  if self.connection then
-    pcall(function() self.connection:close() end)
-  end
+  local conn = self.connection
   self.connection = nil
+  self.connect_started_ms = nil
+  self.last_event_ms = nil
+  if conn then pcall(function() conn:close() end) end
 end
 
 function PcClient:schedule_reconnect()
-  if self.closed then return end
+  if self.closed or self.reconnect_timer then return end
   if not tmr or not tmr.create then return end
-  if self.reconnect_timer then pcall(function() self.reconnect_timer:unregister() end) end
   local base_delay = math.max(1000, math.floor(tonumber(self.config.reconnect_ms) or 2000))
   local max_delay = math.max(base_delay, math.floor(tonumber(self.config.reconnect_max_ms) or base_delay))
   local delay = math.max(base_delay, math.min(max_delay, math.floor(tonumber(self.reconnect_delay_ms) or base_delay)))
   self.reconnect_timer = tmr.create()
   self.reconnect_timer:alarm(delay, tmr.ALARM_SINGLE, function()
+    self.reconnect_timer = nil
     self:connect()
   end)
   self.reconnect_delay_ms = math.min(max_delay, delay * 2)
+end
+
+function PcClient:retry(status, detail)
+  self:close_connection()
+  self:emit_status(status, detail)
+  self:schedule_reconnect()
 end
 
 function PcClient:connect()
   if self.closed then return end
   self:close_connection()
   self.buffer = ""
-  self.connect_started_ms = now_ms()
   self:emit_status("connecting", self:url())
 
   if not net or not net.createConnection then
-    self:emit_status("error", "net unavailable")
-    self:schedule_reconnect()
+    self:retry("error", "net unavailable")
     return
   end
 
@@ -292,8 +295,7 @@ function PcClient:connect()
     return net.createConnection()
   end)
   if not ok or not conn_or_err then
-    self:emit_status("error", tostring(conn_or_err))
-    self:schedule_reconnect()
+    self:retry("error", tostring(conn_or_err))
     return
   end
 
@@ -301,18 +303,22 @@ function PcClient:connect()
   self.connection = conn
 
   local function bind(event, callback)
-    local bind_ok = pcall(function() conn:on(event, callback) end)
+    local bind_ok, bind_err = pcall(function()
+      conn:on(event, function(...)
+        if self.closed or self.connection ~= conn then return end
+        callback(...)
+      end)
+    end)
     if not bind_ok then
-      self:emit_status("error", "bind " .. event)
-      self:schedule_reconnect()
+      self:retry("error", "bind " .. event .. ": " .. tostring(bind_err))
       return false
     end
     return true
   end
 
   if not bind("connection", function()
-    self.connect_started_ms = 0
-    self:reset_reconnect_delay()
+    self.connect_started_ms = nil
+    self.last_event_ms = now_ms()
     self:emit_status("connected", self:url())
     local request = table.concat({
       "GET " .. self:path() .. " HTTP/1.1",
@@ -323,7 +329,8 @@ function PcClient:connect()
       "",
       "",
     }, "\r\n")
-    pcall(function() conn:send(request) end)
+    local send_ok, send_err = pcall(function() conn:send(request) end)
+    if not send_ok then self:retry("error", "send " .. tostring(send_err)) end
   end) then return end
 
   if not bind("receive", function(...)
@@ -331,27 +338,21 @@ function PcClient:connect()
     if chunk and #chunk > 0 then
       local data_ok, data_err = pcall(function() self:handle_chunk(chunk) end)
       if not data_ok then
-        self:emit_status("error", "data " .. tostring(data_err))
-        self:close_connection()
-        self:schedule_reconnect()
+        self:retry("error", "data " .. tostring(data_err))
       end
     end
   end) then return end
 
   if not bind("disconnection", function(...)
-    if self.closed then return end
-    self.connect_started_ms = 0
-    self:emit_status("disconnected", callback_string_arg(...) or "")
-    self:schedule_reconnect()
+    self:retry("disconnected", callback_string_arg(...) or "")
   end) then return end
 
+  self.connect_started_ms = now_ms()
   local connect_ok, connect_err = pcall(function()
     conn:connect(self.config.port or 28765, self.config.host)
   end)
-  if not connect_ok then
-    self.connect_started_ms = 0
-    self:emit_status("error", tostring(connect_err))
-    self:schedule_reconnect()
+  if not connect_ok and self.connection == conn then
+    self:retry("error", tostring(connect_err))
   end
 end
 
@@ -362,18 +363,12 @@ function PcClient:start_watchdog()
   self.watchdog_timer:alarm(self.config.watchdog_ms or 1000, tmr.ALARM_AUTO, function()
     if self.closed then return end
     local now = now_ms()
-    if self.connect_started_ms > 0 and now - self.connect_started_ms > (self.config.timeout_ms or 7000) then
-      self.connect_started_ms = 0
-      self:emit_status("timeout", "connect")
-      self:close_connection()
-      self:schedule_reconnect()
+    if self.connect_started_ms and now - self.connect_started_ms >= (self.config.timeout_ms or 7000) then
+      self:retry("timeout", "connect")
       return
     end
-    if self.last_event_ms > 0 and now - self.last_event_ms > (self.config.client_stale_ms or 5000) then
-      self.last_event_ms = 0
-      self:emit_status("stale", "no sse data")
-      self:close_connection()
-      self:schedule_reconnect()
+    if self.last_event_ms and now - self.last_event_ms >= (self.config.client_stale_ms or 5000) then
+      self:retry("stale", "no valid sse data")
     end
   end)
 end

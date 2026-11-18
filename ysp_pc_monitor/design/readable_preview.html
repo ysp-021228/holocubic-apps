@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HoloCubic · PC 监控新版预览</title>
+<style>
+  :root { color-scheme: light; --paper:#f5f3ee; --ink:#212422; --quiet:#575a52; --rule:#d8d7ce; --rust:#923b21; --mono:ui-monospace,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:14px/1.55 system-ui,"Microsoft YaHei",sans-serif; }
+  main { width:min(940px,100% - 40px); margin:auto; padding:23px 0 30px; }
+  .mast { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:6px 12px; border-bottom:1px solid var(--rule); padding-bottom:11px; font:700 11px/1.3 var(--mono); letter-spacing:.12em; }
+  .mark { color:var(--rust); }
+  .mark::before { content:""; display:inline-block; width:8px; height:8px; margin-right:10px; background:currentColor; transform:rotate(45deg); }
+  .edition { color:var(--quiet); }
+  .intro { margin:23px 0 18px; }
+  h1 { font-size:clamp(26px,5vw,40px); line-height:1.15; letter-spacing:-.035em; margin:0 0 10px; }
+  .intro p { margin:0; color:var(--quiet); }
+  .controls { display:flex; gap:10px 22px; flex-wrap:wrap; padding:12px 0; border-block:1px solid var(--rule); }
+  .control { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+  .control-label { margin-right:5px; color:var(--quiet); font-weight:650; font-size:12px; }
+  button { background:transparent; color:var(--ink); border:1px solid transparent; padding:5px 8px; border-radius:4px; font:inherit; font-size:12px; cursor:pointer; }
+  button:hover { border-color:var(--rule); }
+  button[aria-pressed="true"] { color:white; background:#292d28; }
+  button:focus-visible { outline:2px solid var(--rust); outline-offset:2px; }
+  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px; padding-top:16px; }
+  .grid.single { grid-template-columns:minmax(0,1fr); }
+  figure { min-width:0; margin:0; border:1px solid var(--rule); border-radius:12px; background:#fcfaf5; padding:10px; }
+  .grid.single figure { width:min(100%,470px); justify-self:center; }
+  figcaption { display:flex; align-items:baseline; gap:10px; padding:1px 4px 8px; }
+  figcaption .index { font:700 11px var(--mono); color:var(--rust); }
+  figcaption b { font-size:13px; white-space:nowrap; }
+  figcaption .note { margin-left:auto; text-align:right; font-size:11px; color:var(--quiet); }
+  .glass { position:relative; width:100%; max-width:400px; aspect-ratio:4/3; overflow:hidden; margin:0 auto; border-radius:6px; background:#000; }
+  .grid.single .glass { max-width:320px; }
+  footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 10px; border-top:1px solid var(--rule); margin-top:16px; padding-top:10px; color:var(--quiet); font-size:11px; }
+  footer a { color:var(--rust); text-underline-offset:3px; }
+  @media (max-width:680px) { .grid { grid-template-columns:minmax(0,1fr); } main { width:calc(100% - 24px); } }
+
+  /* Native 320×240 canvas. Black is a proxy for non-emitting pixels. */
+  .screen { --white:#f5f6f9; --dim:#b0bac8; --line:#3e4754; --cpu:#76d7ff; --gpu:#83efbe; --ram:#fbd17a; --power:#ffbc78; --warn:#ffd18b; --hot:#ff9b88; position:absolute; inset:0 auto auto 0; width:320px; height:240px; transform-origin:top left; padding:10px 14px; font:13px/1.2 "Segoe UI",system-ui,sans-serif; font-variant-numeric:tabular-nums; background:#000; color:var(--white); }
+  .head { display:flex; justify-content:space-between; gap:6px; align-items:center; height:30px; border-bottom:1px solid var(--line); }
+  .head h2 { font-size:15px; line-height:1; letter-spacing:.11em; margin:0; }
+  .head-state { font-size:11px; font-weight:700; white-space:nowrap; color:var(--dim); }
+  .cpu { color:var(--cpu); } .gpu { color:var(--gpu); } .ram { color:var(--ram); }
+  .warm, .stale { color:var(--warn); } .hot { color:var(--hot); } .good { color:var(--gpu); }
+  .unavailable { color:var(--dim); }
+  .pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  .stat { min-width:0; }
+  .label { color:var(--dim); font-size:11px; letter-spacing:.09em; font-weight:650; }
+  .stat .label { color:inherit; }
+  .metric { display:inline-flex; align-items:baseline; gap:4px; color:var(--white); white-space:nowrap; font-weight:720; }
+  .metric b { font:inherit; }
+  .metric .unit { color:var(--dim); font-size:12px; font-weight:650; }
+  .metric.unavailable { color:var(--dim); }
+  .stat .metric { display:flex; align-items:baseline; }
+  .sub { color:var(--dim); font-size:12px; line-height:15px; white-space:nowrap; }
+  .sub .metric { display:inline-flex; font-size:inherit; gap:3px; }
+  .rule-left { border-left:1px solid var(--line); padding-left:12px; }
+  .system-pair { padding:10px 0 9px; border-bottom:1px solid var(--line); }
+  .system-pair .stat > .metric { font-size:36px; line-height:38px; }
+  .system-pair .unit { font-size:13px; }
+  .mem-row { display:grid; grid-template-columns:62px 1fr auto; align-items:center; gap:8px; height:31px; border-bottom:1px solid var(--line); }
+  .mem-row .metric { font-size:16px; }
+  .bar { height:3px; background:#343840; }
+  .bar i { display:block; height:100%; background:var(--ram); }
+  .trend-title { display:flex; align-items:center; justify-content:space-between; height:22px; }
+  .legend { display:flex; gap:8px; font-size:10px; font-weight:700; }
+  .legend span::before { content:""; display:inline-block; width:7px; border-top:2px solid; vertical-align:middle; margin-right:3px; }
+  .legend .gpu::before { border-top-style:dashed; }
+  .legend .ram::before { border-top-style:dotted; }
+  .chart { display:block; width:100%; height:40px; }
+  .chart line { stroke:var(--line); stroke-width:1; }
+  .chart polyline { fill:none; stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round; }
+  .thermal-pair { padding:9px 0 7px; border-bottom:1px solid var(--line); }
+  .thermal-pair .stat > .metric { font-size:33px; line-height:36px; }
+  .thermal-pair .sub { display:flex; gap:6px; align-items:baseline; }
+  .screen .metric.warm { color:var(--warn); } .screen .metric.hot { color:var(--hot); }
+  .temp-strip { display:grid; grid-template-columns:repeat(3,1fr); padding:7px 0 5px; border-bottom:1px solid var(--line); }
+  .temp-strip > div + div { border-left:1px solid var(--line); padding-left:10px; }
+  .temp-strip .label, .fan-section > .label, .fan .label { display:block; }
+  .temp-strip .metric { display:flex; font-size:18px; line-height:21px; }
+  .fan-section { padding-top:6px; }
+  .fans { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin-top:3px; }
+  .fan .label { font-size:10px; letter-spacing:0; }
+  .fan .metric { font-size:15px; }
+  .power-total { display:flex; justify-content:space-between; align-items:center; height:65px; border-bottom:1px solid var(--line); }
+  .power-total .label { color:var(--power); }
+  .power-total .hint { display:block; color:var(--warn); font-size:10px; margin-top:4px; }
+  .power-total .metric { font-size:44px; letter-spacing:-.035em; }
+  .power-total .unit { font-size:16px; }
+  .power-pair { padding:8px 0; border-bottom:1px solid var(--line); }
+  .power-pair .stat > .metric { font-size:24px; line-height:26px; }
+  .power-chart { height:30px; }
+  .network-row { display:grid; grid-template-columns:105px 1fr; align-items:center; height:63px; border-bottom:1px solid var(--line); }
+  .direction { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; letter-spacing:.045em; }
+  .direction svg { width:16px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; }
+  .network-row .metric { justify-self:end; font-size:34px; line-height:1; }
+  .network-row .unit { min-width:30px; text-align:right; }
+  .endpoint { padding-top:9px; }
+  .endpoint .label { display:block; }
+  .endpoint code { color:var(--white); font:600 16px/1.4 var(--mono); }
+  .ambient { display:grid; place-content:center; text-align:center; }
+  .ambient time { font-weight:680; font-size:61px; letter-spacing:-.045em; line-height:1; }
+  .ambient .date { color:var(--dim); font-size:13px; letter-spacing:.13em; margin:12px 0 19px; }
+  .ambient .message { font-size:13px; color:var(--warn); font-weight:700; letter-spacing:.12em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mast"><span class="mark">HOLOCUBIC / DESIGN STUDY</span><span class="edition">320 × 240 &nbsp; / &nbsp; REV. 02</span></div>
+  <header class="intro">
+    <h1>PC 监控 · 小屏读数版</h1>
+    <p>先看读数，再看趋势。指标不变，只重排字号、对齐与信息层级。</p>
+  </header>
+  <div class="controls">
+    <div class="control" id="view-controls" role="group" aria-label="选择页面"><span class="control-label">视图</span>
+      <button type="button" data-view="all" aria-pressed="true">四页总览</button>
+      <button type="button" data-view="system" aria-pressed="false">系统</button>
+      <button type="button" data-view="thermal" aria-pressed="false">温度</button>
+      <button type="button" data-view="power" aria-pressed="false">功耗</button>
+      <button type="button" data-view="network" aria-pressed="false">网络</button>
+    </div>
+    <div class="control" id="state-controls" role="group" aria-label="选择数据状态"><span class="control-label">样本</span>
+      <button type="button" data-state="live" aria-pressed="true">正常</button>
+      <button type="button" data-state="missing" aria-pressed="false">部分缺失</button>
+      <button type="button" data-state="stale" aria-pressed="false">数据过期</button>
+      <button type="button" data-state="boot" aria-pressed="false">开机无数据</button>
+    </div>
+  </div>
+  <div class="grid" id="previews" aria-label="屏幕预览"></div>
+  <footer><span>模拟数据 · 黑底代表不发光的像素 · 单页为 320×240，窄屏时缩放</span><a href="hud_preview.html">对照旧版预览 ↗</a></footer>
+</main>
+<script>
+  const pages = [
+    ['system', '系统', '负载与趋势'], ['thermal', '温度', '传感器与风扇'],
+    ['power', '功耗', 'CPU + GPU，不等于整机'], ['network', '网络', '上下行与桥接地址']
+  ];
+  const sample = {
+    clock:'14:13', date:'NOV.18 / WED', cpuLoad:31, gpuLoad:76, memory:82,
+    cpuTemp:68, gpuTemp:62, ccd:61, vram:66, ssd:46, dimm1:45, dimm3:42,
+    cpuClock:5422, gpuClock:2745, fans:[1307, 811, 968, 1022], cpuPower:57.1, gpuPower:156.4,
+    up:83, down:19046, endpoint:'192.0.2.10:28765',
+    cpuHistory:[15,21,19,26,33,31,36,44,32,25,28,24,41,38,27,35,29,31],
+    gpuHistory:[26,28,29,42,39,54,50,68,77,73,65,67,78,82,69,70,79,76],
+    memoryHistory:[73,73,74,74,76,76,76,77,78,78,79,79,80,81,81,82,82,82],
+    powerHistory:[115,124,121,145,143,161,159,177,201,198,184,185,201,225,208,199,222,213.5]
+  };
+  const missing = { ...sample, vram:null, dimm3:null, fans:[1307, null, 968, 1022], gpuPower:null, up:null };
+  const grid = document.querySelector('#previews');
+  let view = 'all', state = 'live';
+
+  function metric(id, value, unit, digits=0, tone='') {
+    if (value == null) return `<span class="metric unavailable" data-metric="${id}" aria-label="无读数"><b>—</b></span>`;
+    return `<span class="metric ${tone}" data-metric="${id}"><b>${value.toFixed(digits)}</b>${unit ? `<span class="unit">${unit}</span>` : ''}</span>`;
+  }
+  function temp(id, value, color=false) {
+    return metric(id, value, '°C', 0, color && value >= 75 ? 'hot' : color && value >= 65 ? 'warm' : '');
+  }
+  function frequency(id, value) {
+    return value >= 1000 ? metric(id, value / 1000, 'GHz', 2) : metric(id, value, 'MHz');
+  }
+  function rate(id, value) {
+    return value >= 1024 ? metric(id, value / 1024, 'MB/s', 1) : metric(id, value, 'KB/s');
+  }
+  function header(name, right='', tone='') {
+    return `<div class="head"><h2>${name}</h2><span class="head-state ${state === 'stale' ? 'stale' : tone}">${state === 'stale' ? 'STALE DATA' : right}</span></div>`;
+  }
+  function chart(id, label, series, dynamic=false) {
+    const w=292, h=40, all=series.flatMap(s => s.points);
+    const min=dynamic ? Math.min(...all) : 0, max=dynamic ? Math.max(...all) : 100;
+    const lines=series.map(s => {
+      const points=s.points.map((n,i) => `${(1 + (w-2)*i/(s.points.length-1)).toFixed(1)},${(max === min ? 20 : 36 - (n-min)/(max-min)*32).toFixed(1)}`).join(' ');
+      return `<polyline points="${points}" stroke="var(--${s.color})"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}/>`;
+    }).join('');
+    return `<svg class="chart ${dynamic ? 'power-chart' : ''}" data-metric="${id}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${label}"><line x1="0" y1="4" x2="292" y2="4"/><line x1="0" y1="20" x2="292" y2="20"/><line x1="0" y1="36" x2="292" y2="36"/>${lines}</svg>`;
+  }
+  function system(d) {
+    const usage = (key, color) => `<div class="stat ${color} ${key === 'gpu' ? 'rule-left' : ''}"><span class="label">${key.toUpperCase()} LOAD</span>${metric(key+'Load',d[key+'Load'],'%')}<div class="sub">${temp(key+'Temp',d[key+'Temp'])} · ${frequency(key+'Clock',d[key+'Clock'])}</div></div>`;
+    return `${header('SYSTEM',`<time data-metric="clock">${d.clock}</time>`)}
+      <div class="pair system-pair">${usage('cpu','cpu')}${usage('gpu','gpu')}</div>
+      <div class="mem-row"><span class="label">MEMORY</span><span class="bar" aria-hidden="true"><i style="width:${d.memory}%"></i></span>${metric('memory',d.memory,'%')}</div>
+      <div class="trend-title"><span class="label">LOAD HISTORY</span><span class="legend"><span class="cpu">CPU</span><span class="gpu">GPU</span><span class="ram">MEM</span></span></div>
+      ${chart('loadHistory','CPU、GPU、内存负载历史',[
+        {points:d.cpuHistory,color:'cpu'},{points:d.gpuHistory,color:'gpu',dash:'5 2'},{points:d.memoryHistory,color:'ram',dash:'1 2.5'}])}`;
+  }
+  function thermal(d) {
+    const readings = [d.cpuTemp,d.gpuTemp,d.ccd,d.vram,d.ssd,d.dimm1,d.dimm3].filter(x => x != null);
+    const max = readings.length ? Math.max(...readings) : null;
+    const tag = max == null ? 'NO DATA' : `${max >= 85 ? 'LIMIT' : max >= 75 ? 'HOT' : max >= 65 ? 'WARM' : 'OK'} · ${max.toFixed(0)}°C`;
+    const tone = max == null ? '' : max >= 75 ? 'hot' : max >= 65 ? 'warm' : 'good';
+    const primary = (key, secondary, caption) => `<div class="stat ${key} ${key === 'gpu' ? 'rule-left' : ''}"><span class="label">${key.toUpperCase()} TEMP</span>${temp(key+'Temp',d[key+'Temp'],true)}<div class="sub">${caption}${temp(secondary,d[secondary],true)}</div></div>`;
+    return `${header('THERMAL',`<span data-metric="thermalState">${tag}</span>`,tone)}
+      <div class="pair thermal-pair">${primary('cpu','ccd','CCD')}${primary('gpu','vram','VRAM')}</div>
+      <div class="temp-strip">${[['ssd','SSD'],['dimm1','DIMM 1'],['dimm3','DIMM 3']].map(([key,label]) => `<div><span class="label">${label}</span>${temp(key,d[key],true)}</div>`).join('')}</div>
+      <div class="fan-section"><span class="label">BOARD FANS · RPM</span><div class="fans">${d.fans.map((value,i) => `<div class="fan"><span class="label">#${i+1}</span>${metric('fan'+(i+1),value,'')}</div>`).join('')}</div></div>`;
+  }
+  function power(d) {
+    const parts=[d.cpuPower,d.gpuPower].filter(x => x != null);
+    const total=parts.length ? parts.reduce((sum,x) => sum+x,0) : null;
+    const stat = key => `<div class="stat ${key} ${key === 'gpu' ? 'rule-left' : ''}"><span class="label">${key.toUpperCase()} POWER</span>${metric(key+'Power',d[key+'Power'],'W',1)}<div class="sub">${frequency(key+'Clock',d[key+'Clock'])}</div></div>`;
+    return `${header('POWER')}
+      <div class="power-total"><div><span class="label">CPU + GPU</span>${parts.length === 1 ? '<span class="hint">PARTIAL DATA</span>' : ''}</div>${metric('totalPower',total,'W',1)}</div>
+      <div class="pair power-pair">${stat('cpu')}${stat('gpu')}</div>
+      <div class="trend-title"><span class="label">POWER HISTORY</span></div>
+      ${chart('powerHistory','CPU 与 GPU 合计功耗历史', [{points:d.powerHistory,color:'power'}], true)}`;
+  }
+  function network(d) {
+    const arrow = up => `<svg viewBox="0 0 16 18" aria-hidden="true"><path d="${up ? 'M8 16V2 M3 7l5-5 5 5' : 'M8 2v14 M3 11l5 5 5-5'}"/></svg>`;
+    const line = (up,key,color) => `<div class="network-row"><div class="direction ${color}">${arrow(up)}${up ? 'UPLOAD' : 'DOWNLOAD'}</div>${rate(key,d[key])}</div>`;
+    return `${header('NETWORK','● ONLINE','good')}${line(true,'up','cpu')}${line(false,'down','gpu')}
+      <div class="endpoint"><span class="label">BRIDGE</span><code data-metric="endpoint">${d.endpoint}</code></div>`;
+  }
+  function ambient(d) {
+    return `<time data-metric="clock">${d.clock}</time><span class="date" data-metric="date">${d.date}</span><span class="message">PC // NO DATA</span>`;
+  }
+  const renderers = {system, thermal, power, network, ambient};
+  const resize = new ResizeObserver(entries => {
+    for (const entry of entries) entry.target.firstElementChild.style.transform = `scale(${entry.contentRect.width/320})`;
+  });
+  function render() {
+    resize.disconnect();
+    const d = state === 'missing' ? missing : sample;
+    const selected = state === 'boot' ? [['ambient','开机无数据','保留时钟与日期']] : pages.filter(([id]) => view === 'all' || view === id);
+    grid.classList.toggle('single',selected.length === 1);
+    grid.innerHTML = selected.map(([id,label,note]) => {
+      const index = id === 'ambient' ? '—' : '0' + (pages.findIndex(([name]) => name === id) + 1);
+      return `<figure><figcaption><span class="index">${index}</span><b>${label}</b><span class="note">${note}</span></figcaption><div class="glass"><div class="screen ${id === 'ambient' ? 'ambient' : ''}" data-page="${id}">${renderers[id](d)}</div></div></figure>`;
+    }).join('');
+    grid.querySelectorAll('.glass').forEach(glass => {
+      glass.firstElementChild.style.transform = `scale(${glass.getBoundingClientRect().width/320})`;
+      resize.observe(glass);
+    });
+    document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(state !== 'boot' && button.dataset.view === view)));
+    document.querySelectorAll('[data-state]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.state === state)));
+  }
+  document.querySelector('#view-controls').addEventListener('click', event => {
+    const button = event.target.closest('[data-view]');
+    if (!button) return;
+    view = button.dataset.view;
+    if (state === 'boot') state = 'live';
+    render();
+  });
+  document.querySelector('#state-controls').addEventListener('click', event => {
+    const button = event.target.closest('[data-state]');
+    if (!button) return;
+    state = button.dataset.state;
+    render();
+  });
+  render();
+</script>
+</body>
+</html>

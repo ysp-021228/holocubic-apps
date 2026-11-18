@@ -1,14 +1,12 @@
 local Page = { title = "POWER" }
 
-local function watt_text(F, value)
-  if tonumber(value) == nil then return "--" end
-  return F.num(value, 1)
-end
-
-local function draw_watts(ctx, x, y, number_width, value, number_size, align)
+local function draw_component(ctx, x, label, component, color)
   local D, F = ctx.draw, ctx.format
   local C = D.palette()
-  D.text(ctx.canvas, x, y, number_width, watt_text(F, value), C.text, number_size, align)
+  local clock = component.clock and F.clock(component.clock) .. " " .. F.clock_unit(component.clock) or "--"
+  D.text(ctx.canvas, x, 109, 134, label, color, 11, D.ALIGN_LEFT)
+  D.metric(ctx, x, 122, 102, F.num(component.power, 1), "W", 24, 12, 12)
+  D.text(ctx.canvas, x, 152, 134, clock, C.soft, 12, D.ALIGN_LEFT)
 end
 
 local function power_points(history, width, height)
@@ -58,25 +56,23 @@ function Page.render(ctx, snap)
   local total = (cpu_power or 0) + (gpu_power or 0)
   local has_total = cpu_power ~= nil or gpu_power ~= nil
 
-  D.header(ctx, "POWER", "COMPUTE")
+  D.header(ctx, "POWER", "")
 
-  D.text(ctx.canvas, 0, 51, 320, "CPU + GPU", C.dim, 8, D.ALIGN_CENTER)
-  D.text(ctx.canvas, 0, 59, 320, watt_text(F, has_total and total or nil), C.text, 62, D.ALIGN_CENTER)
-
-  D.line(ctx.canvas, 44, 134, 276, 134, C.line, 180, 1)
-  D.text(ctx.canvas, 17, 150, 90, "CPU POWER", C.dim, 8, D.ALIGN_LEFT)
-  draw_watts(ctx, 17, 164, 90, cpu.power, 22, D.ALIGN_LEFT)
-  D.text(ctx.canvas, 17, 188, 88, F.clock(cpu.clock) .. " " .. F.clock_unit(cpu.clock), C.dim, 8, D.ALIGN_LEFT)
-
-  D.text(ctx.canvas, 202, 150, 90, "GPU POWER", C.dim, 8, D.ALIGN_RIGHT)
-  draw_watts(ctx, 202, 164, 90, gpu.power, 22, D.ALIGN_RIGHT)
-  D.text(ctx.canvas, 204, 188, 88, F.clock(gpu.clock) .. " " .. F.clock_unit(gpu.clock), C.dim, 8, D.ALIGN_RIGHT)
-
-  local points = power_points(snap.power_history, 244, 22)
-  if points then
-    D.sparkline(ctx, 38, 198, points, C.line)
+  D.text(ctx.canvas, 14, 60, 104, "CPU + GPU", C.power, 12, D.ALIGN_LEFT)
+  if (cpu_power == nil) ~= (gpu_power == nil) then
+    D.text(ctx.canvas, 14, 77, 104, "PARTIAL DATA", C.warn, 10, D.ALIGN_LEFT)
   end
-  D.line(ctx.canvas, 38, 222, 282, 222, C.line_dim, 190, 1)
+  D.metric(ctx, 120, 43, 186, F.num(has_total and total or nil, 1), "W", 44, 16, 18)
+  D.rule(ctx, 14, 101, 306, 101)
+
+  draw_component(ctx, 14, "CPU POWER", cpu, C.cpu)
+  draw_component(ctx, 172, "GPU POWER", gpu, C.gpu)
+  D.rule(ctx, 160, 109, 160, 164)
+  D.rule(ctx, 14, 171, 306, 171)
+
+  D.text(ctx.canvas, 14, 177, 130, "POWER HISTORY", C.dim, 11, D.ALIGN_LEFT)
+  D.chart_grid(ctx, 14, 194, 292, 25)
+  D.sparkline(ctx, 14, 194, power_points(snap.power_history, 292, 25), C.power)
 end
 
 return Page

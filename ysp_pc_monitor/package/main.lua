@@ -63,6 +63,7 @@ local colors = {
 
 local state = {
   stopped = false,
+  has_been_online = false,
   canvas = nil,
   client = nil,
   tick_timer = nil,
@@ -138,7 +139,7 @@ local function show_hud(title)
 end
 
 local function active_page()
-  if not state.runtime.online then
+  if not state.has_been_online then
     return ambient_page
   end
   return pages[state.pager:set_page(state.pager.page, #pages)] or pages[1]
@@ -171,6 +172,7 @@ local function render()
     config = config,
     runtime = state.runtime,
     online = state.runtime.online,
+    stale = state.has_been_online and not state.runtime.online,
     clock = clock_text(),
     page = state.pager.page,
     page_count = #pages,
@@ -191,13 +193,31 @@ local function set_online_page(page)
   show_hud((pages[state.pager.page] and pages[state.pager.page].title) or "")
 end
 
-local function turn_page(direction, event)
-  if key and key.START and event ~= key.START then return end
+local function turn_page(direction)
   if state.stopped or not state.runtime.online then return end
   local page, changed = state.pager:step(direction, #pages, now_ms())
   if changed then
     show_hud((pages[page] and pages[page].title) or "")
     render()
+  end
+end
+
+local function tilt_page(direction, event)
+  if not key.START or event == key.START then turn_page(direction) end
+end
+
+local function start_mic_tap()
+  if config.mic_double_tap == false then return end
+  local ok, stop, err = pcall(function()
+    local MicTap = dofile(APP_DIR .. "/mic_tap.lua")
+    return MicTap.start(function() turn_page(1) end, function(reason)
+      log("mic double tap stopped", reason)
+    end)
+  end)
+  if ok and stop then
+    state.stop_mic_tap = stop
+  else
+    log("mic double tap unavailable", ok and err or stop)
   end
 end
 
@@ -239,7 +259,9 @@ local function create_client()
     on_sample = function(snapshot)
       local transition = state.runtime:apply_sample(snapshot, now_ms())
       if transition == "online" then
-        set_online_page(1)
+        log("presence", "online")
+        if not state.has_been_online then set_online_page(1) end
+        state.has_been_online = true
       end
       render()
     end,
@@ -261,7 +283,7 @@ local function start_tick()
     if state.stopped then return end
     local transition = state.runtime:update_presence(now_ms())
     if transition == "offline" then
-      show_hud("AMBIENT")
+      log("presence", "offline", "no valid sample for", now_ms() - state.runtime.last_valid_ms, "ms")
     end
     render()
   end)
@@ -282,6 +304,10 @@ function state.stop(reason)
   if state.stopped then return end
   state.stopped = true
   log("stop", reason or "")
+  if state.stop_mic_tap then
+    state.stop_mic_tap()
+    state.stop_mic_tap = nil
+  end
   if state.client then
     state.client:stop()
     state.client = nil
@@ -301,10 +327,10 @@ end
 
 if key and key.on then
   if key.LEFT then
-    key.on(key.LEFT, function(event) turn_page(-1, event) end)
+    key.on(key.LEFT, function(event) tilt_page(-1, event) end)
   end
   if key.RIGHT then
-    key.on(key.RIGHT, function(event) turn_page(1, event) end)
+    key.on(key.RIGHT, function(event) tilt_page(1, event) end)
   end
   if key.HOME then
     key.on(key.HOME, function(event)
@@ -324,5 +350,6 @@ render()
 start_client()
 start_tick()
 start_time_sync_timer()
+start_mic_tap()
 
 return state
