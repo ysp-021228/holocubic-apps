@@ -80,7 +80,7 @@ function Page.render(ctx, snap)
   local C = D.palette()
   local cpu, gpu, memory = snap.cpu or {}, snap.gpu or {}, snap.memory or {}
 
-  remember_load_sample(snap, cpu, gpu, memory)
+  if not snap.load_history then remember_load_sample(snap, cpu, gpu, memory) end
   D.header(ctx, "SYSTEM", ctx.clock)
 
   draw_load(ctx, 14, "CPU LOAD", cpu, C.cpu)
@@ -97,7 +97,7 @@ function Page.render(ctx, snap)
   D.metric(ctx, 251, 127, 55, F.num(memory.load, 0), "%", 16, 11, 11)
   D.rule(ctx, 14, 152, 306, 152)
 
-  draw_usage_trace(ctx, Page._load_history)
+  draw_usage_trace(ctx, snap.load_history or Page._load_history)
 end
 
 return Page

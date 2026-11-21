@@ -1,6 +1,6 @@
 # YSP PC Monitor
 
-这是运行在 Clocteck HoloCubic Lua 固件上的 PC 性能监控应用。它从 Windows 侧 `holo-bridge` 拉取数据，在设备上显示 `SYSTEM`、`THERMAL`、`POWER`、`NETWORK` 四页。Windows bridge 不在这个 Git 仓库里；本库的 `holo_pc_monitor` 和 `aida_monitor` 是不同应用。
+这是运行在 Clocteck HoloCubic Lua 固件上的 PC 性能监控应用。它从 Windows 侧 `holo-bridge` 拉取数据，在设备上显示 `SYSTEM`、`THERMAL`、`POWER`、`NETWORK` 四页，也可在同一应用内切到 Bambu Lab X2D 状态。Windows bridge 不在这个 Git 仓库里；本库的 `holo_pc_monitor` 和 `aida_monitor` 是不同应用。
 
 ## 代码入口
 
@@ -11,7 +11,8 @@
 | [`package/pc_client.lua`](package/pc_client.lua) | TCP 连接、HTTP SSE 行解析、样本校验、超时与退避重连 |
 | [`package/pc_state.lua`](package/pc_state.lua) | 最近有效样本、采样历史和在线状态 |
 | [`package/main.lua`](package/main.lua) | 初始化、定时器、翻页、应用退出和渲染调度 |
-| [`package/mic_tap.lua`](package/mic_tap.lua) | 本地检测短促双敲，不保存或发送音频 |
+| [`package/mic_tap.lua`](package/mic_tap.lua) | 本地识别双敲和三敲，不保存或发送音频 |
+| [`package/printer_client.lua`](package/printer_client.lua) | 异步读取 X2D 快照，独立处理无数据和过期 |
 | [`package/pages/`](package/pages/) 和 [`package/widgets/`](package/widgets/) | 页面与通用绘制、格式化函数 |
 
 [平台 Lua API](../README_LUA.md) 和 [LVGL API](../README_LVGL.md) 用于确认设备运行时支持的接口。[HUD 预览](design/hud_preview.html) 是设计参考，不代替设备验证。
@@ -23,10 +24,14 @@
 - 当前 TCP 建连超时为 7 秒，连接内 5 秒没有有效样本会重连，退避从 2 秒加到最多 30 秒，收到有效样本后重置。显示层在约 10 秒没有有效样本后将数据标记为过期，收到两个有效样本后恢复在线。
 - 从未收到足够有效样本时显示 `PC // NO DATA`；曾在线时保留当前页与最后的有效数据并标记 `STALE DATA`。恢复后保留当前页。旧版本的 `PC // SLEEP` 不是休眠检测结果。
 
-## 翻页
+## 翻页与切换视图
 
-- 在线时，向左或向右倾斜仍可翻页。设备平放时，轻敲底座两下可切到下一页；双敲和倾斜共用翻页冷却。
-- 双敲只在监控应用运行时使用麦克风。应用只统计瞬时峰值，不保存、不上传原始音频。若误触或需要让出麦克风，在设备 `config.lua` 的 `return config` 前加入 `config.mic_double_tap = false`，再重启应用。麦克风不可用时，倾斜翻页和监控不受影响。
+- 在线时，向左或向右倾斜仍可翻页。设备平放时，轻敲底座两下去下一页，双敲与倾斜共用翻页冷却。双敲在第二下后约等半秒，确认没有第三下才翻页。
+- 连续轻敲三下切到 X2D，再三下回到之前的 PC 页。三敲不受两边的数据在线状态限制；在 X2D 视图中，双敲和倾斜不会改变隐藏的 PC 页。后台继续接收 PC 样本并记录历史。
+- PC 视图停留在非 `SYSTEM` 页面时，60 秒内没有成功切换 PC 页面会自动回到 `SYSTEM`。手动翻页会重新计时；SSE 样本和连接状态变化不会续期。X2D 显示期间暂停此计时，三敲返回时保留原 PC 页并重新开始 60 秒。
+- 仅在 X2D 视图打开时轮询 Windows bridge 的 `/printer/status`。首次没样本显示 `NO DATA`，掉线保留最后读数并显示 `STALE DATA`。这依赖 Windows bridge 运行并启用 X2D 采集；Cubic 不直连打印机，也不控制打印。
+- X2D 页显示左右喷嘴各自的实际温度（来自 extruder ID 0/1），以及床温、腔温、进度、耗材和 AMS 相对湿度；无有效读数时显示 `--`。
+- 手势只在本应用运行时使用麦克风，灵敏度阈值仍为 `1200`，只统计瞬时峰值。若误触或需要让出麦克风，在设备 `config.lua` 的 `return config` 前加入 `config.mic_double_tap = false`，再重启应用，即可同时关闭两种敲击手势。麦克风不可用时，倾斜翻页和 PC 监控不受影响。
 
 ## 部署与回滚
 

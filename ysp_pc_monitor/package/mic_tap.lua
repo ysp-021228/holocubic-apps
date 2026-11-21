@@ -9,14 +9,45 @@ local MIN_GAP_MS = 180
 local MAX_GAP_MS = 550
 local abs, max, byte = math.abs, math.max, string.byte
 
-function MicTap.start(on_double, on_error)
+function MicTap.start(on_double, on_error, on_triple)
   if not (i2s and i2s.start and i2s.read and i2s.stop and tmr and tmr.create and millis) then
     return nil, "microphone API unavailable"
   end
 
   local timer, opened, last_read, warm_until
   local prev, samples, peak, audio_ms = nil, 0, 0, 0
-  local impulse, first_tap_ms
+  local impulse, last_tap_ms, tap_count
+
+  local function clear_taps()
+    last_tap_ms, tap_count = nil, 0
+  end
+
+  local function expire_pair(t)
+    if tap_count ~= 2 or t - last_tap_ms <= MAX_GAP_MS then return end
+    -- A third impulse can start on the last bin of the window. Let it finish
+    -- (including the quiet tail) before deciding whether this was a double.
+    if impulse and impulse.first - last_tap_ms <= MAX_GAP_MS and impulse.last - impulse.first < 100 then return end
+    clear_taps()
+    on_double()
+  end
+
+  local function accept_tap(t)
+    local gap = last_tap_ms and t - last_tap_ms
+    if not gap or gap > MAX_GAP_MS then
+      if tap_count == 2 then on_double() end
+      last_tap_ms, tap_count = t, 1
+    elseif gap >= MIN_GAP_MS then
+      if not on_triple then
+        clear_taps()
+        on_double()
+      elseif tap_count == 2 then
+        clear_taps()
+        on_triple()
+      else
+        last_tap_ms, tap_count = t, 2
+      end
+    end
+  end
 
   local function stop()
     if timer then
@@ -42,19 +73,12 @@ function MicTap.start(on_double, on_error)
     elseif impulse and t - impulse.last > 60 then
       local event = impulse
       impulse = nil
-      if event.peak < TAP_PEAK then return end
-      if event.last - event.first + 10 > 100 then
-        first_tap_ms = nil
-        return
-      end
-      local gap = first_tap_ms and event.at - first_tap_ms
-      if gap and gap >= MIN_GAP_MS and gap <= MAX_GAP_MS then
-        first_tap_ms = nil
-        on_double()
-      elseif not gap or gap > MAX_GAP_MS then
-        first_tap_ms = event.at
+      if event.peak >= TAP_PEAK then
+        if event.last - event.first + 10 > 100 then clear_taps()
+        else accept_tap(event.at) end
       end
     end
+    if on_triple then expire_pair(t) end
   end
 
   local function feed(raw)
@@ -76,7 +100,8 @@ function MicTap.start(on_double, on_error)
     if now - last_read >= 150 then
       -- Do not join two taps across an interruption in the audio stream.
       prev, samples, peak, audio_ms = nil, 0, 0, 0
-      impulse, first_tap_ms = nil, nil
+      impulse = nil
+      clear_taps()
     end
     for _ = 1, 4 do
       local raw = i2s.read(0, 1024, 1)

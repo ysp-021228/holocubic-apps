@@ -28,6 +28,7 @@ local PcState = dofile(APP_DIR .. "/pc_state.lua")
 local Pager = dofile(APP_DIR .. "/pager.lua")
 local Draw = dofile(APP_DIR .. "/widgets/draw.lua")
 local Format = dofile(APP_DIR .. "/widgets/format.lua")
+local PrinterClient = dofile(APP_DIR .. "/printer_client.lua")
 
 local pages = {
   dofile(APP_DIR .. "/pages/system.lua"),
@@ -36,6 +37,7 @@ local pages = {
   dofile(APP_DIR .. "/pages/network.lua"),
 }
 local ambient_page = dofile(APP_DIR .. "/pages/ambient.lua")
+local printer_page = dofile(APP_DIR .. "/pages/printer.lua")
 
 local function bit_or(a, b)
   if bit32 and bit32.bor then return bit32.bor(a or 0, b or 0) end
@@ -64,6 +66,7 @@ local colors = {
 local state = {
   stopped = false,
   has_been_online = false,
+  printer_visible = false,
   canvas = nil,
   client = nil,
   tick_timer = nil,
@@ -72,6 +75,7 @@ local state = {
   pager = Pager.new(config),
   hud_title = "",
   hud_until_ms = 0,
+  last_pc_page_switch_ms = 0,
 }
 
 local function log(...)
@@ -151,6 +155,15 @@ local function render()
   local explicit = Draw.begin(state.canvas)
   Draw.fill(state.canvas, colors.bg)
 
+  if state.printer_visible then
+    local ok, err = pcall(printer_page.render, {
+      canvas = state.canvas, draw = Draw, stale = state.printer:is_stale(),
+    }, state.printer.sample)
+    if not ok then log("printer render failed", err) end
+    Draw.finish(state.canvas, explicit)
+    return
+  end
+
   local page = active_page()
   local now = now_ms()
   local footer_text
@@ -188,18 +201,33 @@ local function render()
   Draw.finish(state.canvas, explicit)
 end
 
+state.printer = PrinterClient.new(config, now_ms, function()
+  if state.printer_visible then render() end
+end)
+
 local function set_online_page(page)
   state.pager:set_page(page, #pages)
+  state.last_pc_page_switch_ms = now_ms()
   show_hud((pages[state.pager.page] and pages[state.pager.page].title) or "")
 end
 
 local function turn_page(direction)
-  if state.stopped or not state.runtime.online then return end
-  local page, changed = state.pager:step(direction, #pages, now_ms())
+  if state.stopped or state.printer_visible or not state.runtime.online then return end
+  local now = now_ms()
+  local page, changed = state.pager:step(direction, #pages, now)
   if changed then
+    state.last_pc_page_switch_ms = now
     show_hud((pages[page] and pages[page].title) or "")
     render()
   end
+end
+
+local function toggle_view()
+  if state.stopped then return end
+  state.printer_visible = not state.printer_visible
+  if not state.printer_visible then state.last_pc_page_switch_ms = now_ms() end
+  render()
+  if state.printer_visible then state.printer:poll(true) end
 end
 
 local function tilt_page(direction, event)
@@ -211,13 +239,13 @@ local function start_mic_tap()
   local ok, stop, err = pcall(function()
     local MicTap = dofile(APP_DIR .. "/mic_tap.lua")
     return MicTap.start(function() turn_page(1) end, function(reason)
-      log("mic double tap stopped", reason)
-    end)
+      log("mic taps stopped", reason)
+    end, toggle_view)
   end)
   if ok and stop then
     state.stop_mic_tap = stop
   else
-    log("mic double tap unavailable", ok and err or stop)
+    log("mic taps unavailable", ok and err or stop)
   end
 end
 
@@ -252,7 +280,7 @@ local function create_client()
       log("status", status, detail or "")
       local was_online = state.runtime.online
       state.runtime:set_status(status, detail)
-      if was_online or state.runtime.online then
+      if not state.printer_visible and (was_online or state.runtime.online) then
         render()
       end
     end,
@@ -263,7 +291,7 @@ local function create_client()
         if not state.has_been_online then set_online_page(1) end
         state.has_been_online = true
       end
-      render()
+      if not state.printer_visible then render() end
     end,
   })
 end
@@ -281,10 +309,18 @@ local function start_tick()
   state.tick_timer = tmr.create()
   state.tick_timer:alarm(500, tmr.ALARM_AUTO, function()
     if state.stopped then return end
-    local transition = state.runtime:update_presence(now_ms())
+    local now = now_ms()
+    local transition = state.runtime:update_presence(now)
     if transition == "offline" then
-      log("presence", "offline", "no valid sample for", now_ms() - state.runtime.last_valid_ms, "ms")
+      log("presence", "offline", "no valid sample for", now - state.runtime.last_valid_ms, "ms")
     end
+    if not state.printer_visible and state.pager.page ~= 1 and
+        now - state.last_pc_page_switch_ms >= 60000 then
+      state.pager:set_page(1, #pages)
+      state.last_pc_page_switch_ms = now
+      show_hud((pages[1] and pages[1].title) or "SYSTEM")
+    end
+    if state.printer_visible then state.printer:poll() end
     render()
   end)
 end
@@ -304,6 +340,7 @@ function state.stop(reason)
   if state.stopped then return end
   state.stopped = true
   log("stop", reason or "")
+  state.printer:stop()
   if state.stop_mic_tap then
     state.stop_mic_tap()
     state.stop_mic_tap = nil
